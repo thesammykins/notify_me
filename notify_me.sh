@@ -57,6 +57,8 @@ Options:
   --username "name"              Override display username
   --avatar-url "url"             Override avatar URL
   --tts                          Enable text-to-speech
+  --install-path                 Install notify_me.sh to system PATH for global access
+  --show-agent-guide             Display the LLM/Agent usage guide
   --help, -h                     Show this help
 
 Environment and config:
@@ -69,6 +71,10 @@ Environment and config:
 
 Security:
   The webhook URL is passed to curl via stdin (not args) to avoid exposure in process lists.
+
+Installation:
+  Run with --install-path on first use to enable system-wide access:
+  ./notify_me.sh --install-path
 EOF
 }
 
@@ -119,6 +125,64 @@ build_payload() {
 
   payload+="}"
   printf '%s' "$payload"
+}
+
+show_agent_guide() {
+  local agent_file="$SCRIPT_DIR/AGENT.md"
+  
+  if [ -f "$agent_file" ]; then
+    cat "$agent_file"
+  else
+    echo "⚠️  AGENT.md file not found at: $agent_file"
+    echo "💡 This file contains usage guidelines for LLMs and automated agents."
+    echo "📁 Make sure AGENT.md exists in the same directory as notify_me.sh"
+    exit 1
+  fi
+  exit 0
+}
+
+install_to_path() {
+  local script_path="$(cd "$SCRIPT_DIR" && pwd)/$(basename "$SCRIPT_SELF")"
+  local bin_dir target_path
+  
+  echo "🔧 Installing notify_me.sh to system PATH..."
+  echo "📁 Script location: $script_path"
+  
+  # Determine best bin directory
+  if [ -d "/opt/homebrew/bin" ] && [[ ":$PATH:" == *":/opt/homebrew/bin:"* ]]; then
+    bin_dir="/opt/homebrew/bin"
+  elif [ -d "/usr/local/bin" ] && [[ ":$PATH:" == *":/usr/local/bin:"* ]]; then
+    bin_dir="/usr/local/bin"
+  else
+    bin_dir="$HOME/bin"
+    mkdir -p "$bin_dir"
+  fi
+  
+  target_path="$bin_dir/notify_me.sh"
+  
+  # Create symlink
+  if ln -sf "$script_path" "$target_path" 2>/dev/null; then
+    echo "✅ Successfully installed to: $target_path"
+    
+    # Test if it's in PATH
+    if command -v notify_me.sh >/dev/null 2>&1; then
+      echo "🎉 notify_me.sh is now available system-wide!"
+      echo "📋 Test it: notify_me.sh --help"
+    else
+      echo "⚠️  Installed to: $target_path"
+      echo "💡 Add to your PATH by adding this to ~/.zshrc:"
+      echo "   export PATH=\"$bin_dir:\$PATH\""
+      echo "🔄 Then run: source ~/.zshrc"
+    fi
+  else
+    echo "❌ Failed to install to $target_path"
+    echo "💡 Try running with sudo or choose a different location"
+    exit 1
+  fi
+  
+  echo ""
+  echo "🚀 Installation complete! You can now use notify_me.sh from anywhere."
+  exit 0
 }
 
 send_discord() {
@@ -194,6 +258,12 @@ main() {
         ;;
       --tts)
         tts="true"
+        ;;
+      --install-path)
+        install_to_path
+        ;;
+      --show-agent-guide)
+        show_agent_guide
         ;;
       -h|--help)
         usage; exit 0

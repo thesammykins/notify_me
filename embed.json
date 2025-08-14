@@ -1,0 +1,10 @@
+{
+  "title": "Build Finished",
+  "description": "All checks passed.",
+  "color": 5814783,
+  "fields": [
+    { "name": "Branch", "value": "main", "inline": true },
+    { "name": "Commit", "value": "abc1234", "inline": true }
+  ],
+  "footer": { "text": "notify_me.sh" }
+}
