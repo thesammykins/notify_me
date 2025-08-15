@@ -90,7 +90,7 @@ json_escape() {
   printf '%s' "$s"
 }
 
-build_payload() {
+build_discord_payload() {
   local message="$1"
   local embed_json="${2:-}"
   local username="${3:-}"
@@ -120,6 +120,46 @@ build_payload() {
       add "\"embeds\":$trimmed"
     else
       add "\"embeds\":[${trimmed}]"
+    fi
+  fi
+
+  payload+="}"
+  printf '%s' "$payload"
+}
+
+build_slack_payload() {
+  local message="$1"
+  local embed_json="${2:-}"
+  local username="${3:-}"
+  local avatar_url="${4:-}"
+  # tts is ignored for Slack
+
+  local payload="{"
+  local first=1
+  add() { if [ $first -eq 1 ]; then first=0; else payload+=", "; fi; payload+="$1"; }
+
+  if [ -n "$username" ]; then
+    add "\"username\":\"$(json_escape "$username")\""
+  fi
+  if [ -n "$avatar_url" ]; then
+    add "\"icon_url\":\"$(json_escape "$avatar_url")\""
+  fi
+  if [ -n "$message" ]; then
+    add "\"text\":\"$(json_escape "$message")\""
+  fi
+  if [ -n "$embed_json" ]; then
+    local trimmed
+    trimmed="$(printf '%s' "$embed_json" | awk 'NR==1{sub(/^[ \t\r\n]+/,"")}1')"
+    if printf '%s' "$trimmed" | grep -q '^\['; then
+      # Array format: treat as blocks
+      add "\"blocks\":$trimmed"
+    else
+      # Object format: merge keys into payload (strip outer braces)
+      local inner_json
+      inner_json="$(printf '%s' "$trimmed" | sed 's/^{//; s/}$//')"
+      if [ -n "$inner_json" ]; then
+        add "$inner_json"
+      fi
     fi
   fi
 
@@ -227,6 +267,48 @@ send_discord() {
   done
 }
 
+send_slack() {
+  local webhook="$1"
+  local payload="$2"
+  local max_retries="${3:-2}"
+
+  umask 077
+  local headers body http_code attempt=0
+  headers="$(mktemp -t notify_me_headers.XXXXXX)"
+  body="$(mktemp -t notify_me_body.XXXXXX)"
+  trap 'rm -f "$headers" "$body"' EXIT
+
+  while :; do
+    attempt=$((attempt+1))
+    http_code="$(
+      printf 'url="%s"\n' "$webhook" |
+      curl -sS --config - \
+        -H 'Content-Type: application/json' \
+        --data-binary @<(printf '%s' "$payload") \
+        -o "$body" -D "$headers" -w '%{http_code}' || echo "000"
+    )"
+
+    if [ "$http_code" = "200" ]; then
+      rm -f "$headers" "$body"; trap - EXIT
+      return 0
+    fi
+
+    if [ "$http_code" = "429" ] && [ "$attempt" -le "$max_retries" ]; then
+      local retry
+      retry="$(awk 'tolower($0) ~ /^retry-after:/ {print $2; exit}' "$headers" | tr -d '\r')"
+      [ -z "$retry" ] && retry="1"
+      echo "Rate limited by Slack. Retrying after ${retry}s (attempt ${attempt}/${max_retries})..." >&2
+      sleep "$retry"
+      continue
+    fi
+
+    echo "Slack API error (HTTP $http_code):" >&2
+    cat "$body" >&2
+    rm -f "$headers" "$body"; trap - EXIT
+    return 1
+  done
+}
+
 main() {
   load_env
 
@@ -295,7 +377,7 @@ main() {
   fi
 
   local payload
-  payload="$(build_payload "$message" "$embed_json" "$username" "$avatar_url" "$tts")"
+  payload="$(build_discord_payload "$message" "$embed_json" "$username" "$avatar_url" "$tts")"
   send_discord "$webhook" "$payload"
 }
 
