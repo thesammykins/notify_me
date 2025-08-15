@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# notify_me.sh — Send Discord notifications using a webhook from .env
-# - Loads DISCORD_WEBHOOK_URL from .env in the same directory as this script by default.
+# notify_me.sh — Send webhook notifications to Discord and/or Slack from .env
+# - Loads DISCORD_WEBHOOK_URL and SLACK_WEBHOOK_URL from .env in the same directory as this script by default.
 # - Override .env location with NOTIFY_ME_ENV_FILE or NOTIFY_ME_ENV_DIR.
 # - Avoids exposing the webhook URL in process lists by passing it to curl via stdin.
-# - Supports plain text content, optional embeds (JSON string or file), username/avatar overrides, and TTS.
+# - Supports plain text content, service-native rich formatting, username/avatar overrides, and Discord TTS.
 
 set -euo pipefail
 
@@ -46,31 +46,56 @@ die() {
 
 usage() { cat <<'EOF'
 Usage: notify_me.sh --message "text" [options]
-Send a message to Discord via webhook using DISCORD_WEBHOOK_URL from .env
+Send webhook notifications to Discord and/or Slack using URLs from .env
 
 Required:
-  --message, -m "text"           Plain text message (1-2000 chars), required if no --embed-json/--embed-file
+  --message, -m "text"           Plain text message, required if no --embed-json/--embed-file
 
 Options:
-  --embed-json 'JSON'            Embed JSON string (object or array). If object, it will be wrapped in [ ... ]
-  --embed-file /path/embed.json  Read embed JSON from file
+  --service SERVICE              Target service: discord, slack, or both (auto-detected if not specified)
+  --embed-json 'JSON'            Rich content JSON:
+                                   Discord: embed object/array
+                                   Slack: blocks array or attachments/custom object
+  --embed-file /path/file.json   Read rich content JSON from file
   --username "name"              Override display username
-  --avatar-url "url"             Override avatar URL
-  --tts                          Enable text-to-speech
+  --avatar-url "url"             Override avatar URL (Discord: avatar_url, Slack: icon_url)
+  --tts                          Enable text-to-speech (Discord only, ignored for Slack)
   --install-path                 Install notify_me.sh to system PATH for global access
   --show-agent-guide             Display the LLM/Agent usage guide
   --help, -h                     Show this help
 
-Environment and config:
-  - Script loads .env next to notify_me.sh by default.
-  - Override location with:
-      NOTIFY_ME_ENV_FILE=/abs/path/to/.env
-      or
-      NOTIFY_ME_ENV_DIR=/abs/path/to/dir
-  - .env must define: DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
+Service Selection:
+  If --service is not specified, the service is auto-detected:
+  - Only DISCORD_WEBHOOK_URL set → discord
+  - Only SLACK_WEBHOOK_URL set → slack
+  - Both URLs set → discord (for backward compatibility; use --service both for both)
+  - No URLs set → error
+
+Environment Configuration:
+  - Script loads .env next to notify_me.sh by default
+  - Override location with NOTIFY_ME_ENV_FILE=/path/to/.env or NOTIFY_ME_ENV_DIR=/path/to/dir
+  - Configure webhooks:
+      DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/ID/TOKEN"
+      SLACK_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/XXXX"
+
+Examples:
+  # Auto-detected service (Discord if both configured)
+  notify_me.sh -m "Hello world!"
+  
+  # Slack simple message
+  notify_me.sh --service slack -m "Deploy completed"
+  
+  # Discord embed
+  notify_me.sh --service discord --embed-json '{"title":"Status","color":65280}'
+  
+  # Slack blocks
+  notify_me.sh --service slack --embed-json '[{"type":"section","text":{"type":"mrkdwn","text":"*Success*"}}]'
+  
+  # Both services
+  notify_me.sh --service both -m "Build finished" --username "CI Bot"
 
 Security:
-  The webhook URL is passed to curl via stdin (not args) to avoid exposure in process lists.
+  Webhook URLs are passed to curl via stdin (not args) to avoid exposure in process lists.
 
 Installation:
   Run with --install-path on first use to enable system-wide access:
@@ -312,7 +337,7 @@ send_slack() {
 main() {
   load_env
 
-  local message="" embed_json="" embed_file="" username="" avatar_url="" tts="false"
+  local message="" embed_json="" embed_file="" username="" avatar_url="" tts="false" service=""
 
   if [ $# -eq 0 ]; then
     usage
@@ -331,6 +356,13 @@ main() {
         shift; embed_file="${1:-}"; [ -z "${embed_file:-}" ] && die "--embed-file requires a path"
         [ ! -f "$embed_file" ] && die "Embed file not found: $embed_file"
         embed_json="$(cat "$embed_file")"
+        ;;
+      --service)
+        shift; service="${1:-}"; [ -z "${service:-}" ] && die "--service requires a value"
+        case "$service" in
+          discord|slack|both) ;; # Valid values
+          *) die "Invalid service '$service'. Must be: discord, slack, or both" ;;
+        esac
         ;;
       --username)
         shift; username="${1:-}"; [ -z "${username:-}" ] && die "--username requires a value"
@@ -366,19 +398,81 @@ main() {
     shift || true
   done
 
-  local webhook="${DISCORD_WEBHOOK_URL:-}"
-  [ -z "$webhook" ] && die "DISCORD_WEBHOOK_URL is not set. Create a .env file next to notify_me.sh with: DISCORD_WEBHOOK_URL=\"https://discord.com/api/webhooks/...\""
-
   if [ -z "$message" ] && [ -z "$embed_json" ]; then
     die "You must provide --message or --embed-json/--embed-file."
   fi
-  if [ -n "$message" ] && [ "${#message}" -gt 2000 ]; then
-    die "Message exceeds Discord 2000 character limit (${#message})."
+
+  # Determine services to send to
+  local services_to_send=()
+  if [ -n "$service" ]; then
+    case "$service" in
+      discord)
+        [ -z "${DISCORD_WEBHOOK_URL:-}" ] && die "DISCORD_WEBHOOK_URL is not set. Configure it in .env: DISCORD_WEBHOOK_URL=\"https://discord.com/api/webhooks/...\""
+        services_to_send+=(discord)
+        ;;
+      slack)
+        [ -z "${SLACK_WEBHOOK_URL:-}" ] && die "SLACK_WEBHOOK_URL is not set. Configure it in .env: SLACK_WEBHOOK_URL=\"https://hooks.slack.com/services/...\""
+        services_to_send+=(slack)
+        ;;
+      both)
+        [ -n "${DISCORD_WEBHOOK_URL:-}" ] && services_to_send+=(discord)
+        [ -n "${SLACK_WEBHOOK_URL:-}" ] && services_to_send+=(slack)
+        [ ${#services_to_send[@]} -eq 0 ] && die "No webhook URLs configured. Set DISCORD_WEBHOOK_URL and/or SLACK_WEBHOOK_URL in .env"
+        ;;
+    esac
+  else
+    # Auto-detect based on environment
+    if [ -n "${DISCORD_WEBHOOK_URL:-}" ] && [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+      services_to_send+=(discord)
+    elif [ -z "${DISCORD_WEBHOOK_URL:-}" ] && [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+      services_to_send+=(slack)
+    elif [ -n "${DISCORD_WEBHOOK_URL:-}" ] && [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+      services_to_send+=(discord)  # Default to Discord for backward compatibility
+    else
+      die "No webhook URLs configured. Create a .env file with DISCORD_WEBHOOK_URL and/or SLACK_WEBHOOK_URL"
+    fi
   fi
 
-  local payload
-  payload="$(build_discord_payload "$message" "$embed_json" "$username" "$avatar_url" "$tts")"
-  send_discord "$webhook" "$payload"
+  # Send to each service
+  local any_success=0 all_failed=1 overall_exit=0
+  for svc in "${services_to_send[@]}"; do
+    if [ "$svc" = "discord" ]; then
+      # Discord-specific validation
+      if [ -n "$message" ] && [ "${#message}" -gt 2000 ]; then
+        echo "Discord send failed: Message exceeds 2000 character limit (${#message})" >&2
+        overall_exit=1
+        continue
+      fi
+      local payload
+      payload="$(build_discord_payload "$message" "$embed_json" "$username" "$avatar_url" "$tts")"
+      if send_discord "${DISCORD_WEBHOOK_URL}" "$payload"; then
+        any_success=1
+        all_failed=0
+      else
+        echo "Discord send failed" >&2
+        overall_exit=1
+      fi
+    elif [ "$svc" = "slack" ]; then
+      local payload
+      payload="$(build_slack_payload "$message" "$embed_json" "$username" "$avatar_url")"
+      if send_slack "${SLACK_WEBHOOK_URL}" "$payload"; then
+        any_success=1
+        all_failed=0
+      else
+        echo "Slack send failed" >&2
+        overall_exit=1
+      fi
+    fi
+  done
+
+  # Exit logic
+  if [ ${#services_to_send[@]} -eq 1 ]; then
+    # Single service: exit with the result of that send
+    exit $overall_exit
+  else
+    # Multiple services: exit 0 if any succeeded, 1 if all failed
+    [ $all_failed -eq 1 ] && exit 1 || exit 0
+  fi
 }
 
 main "$@"
