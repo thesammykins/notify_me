@@ -13,7 +13,7 @@
 - 📱 **Rich Messages**: Service-native formatting (Discord embeds, Slack blocks/attachments)
 - 🛡️ **Robust**: Input validation, rate limiting, automatic retries
 - 🌍 **System-wide**: Available from anywhere via PATH
-- 📝 **Flexible**: Support for inline JSON or external files
+- 📝 **Flexible**: Support for inline JSON and external files (Discord)
 - 🤖 **LLM-friendly**: Simple interface for automated usage
 
 ## 🚀 Quick Start
@@ -179,9 +179,11 @@ notify_me.sh --service slack --embed-json '{
 }'
 ```
 
-#### From JSON Files
+#### From JSON Files (Discord Only)
 
-Create service-specific JSON files:
+**⚠️ Important:** File-based JSON (`--embed-file`) works reliably with **Discord only**. For **Slack**, use inline JSON with `--embed-json` to avoid potential payload issues.
+
+Create Discord embed files:
 
 **discord-success.json:**
 ```json
@@ -196,9 +198,13 @@ Create service-specific JSON files:
 }
 ```
 
-**slack-success.json:**
-```json
-[
+Then use them:
+```bash
+# Discord - File-based (recommended)
+notify_me.sh --service discord --embed-file discord-success.json
+
+# Slack - Use inline JSON instead
+notify_me.sh --service slack --embed-json '[
   {
     "type": "section",
     "text": {
@@ -206,19 +212,7 @@ Create service-specific JSON files:
       "text": "✅ *Success*\n\nOperation completed successfully"
     }
   }
-]
-```
-
-Then use them:
-```bash
-# Discord
-notify_me.sh --service discord --embed-file discord-success.json
-
-# Slack
-notify_me.sh --service slack --embed-file slack-success.json
-
-# Both (will use same file with each service's native interpretation)
-notify_me.sh --service both --embed-file success.json
+]'
 ```
 
 ## 🎨 Colors
@@ -267,7 +261,7 @@ notify_me.sh --service both -m "Multi-service message"
 | `-m, --message "text"` | Plain text message |
 | `--service SERVICE` | Target service: `discord`, `slack`, or `both` |
 | `--embed-json 'JSON'` | Rich content JSON (service-specific format) |
-| `--embed-file path` | Load rich content from JSON file |
+| `--embed-file path` | Load rich content from JSON file (Discord only) |
 | `--username "name"` | Override display username |
 | `--avatar-url "url"` | Override avatar (Discord) or icon (Slack) |
 | `--tts` | Enable text-to-speech (Discord only) |

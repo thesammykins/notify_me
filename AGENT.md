@@ -174,7 +174,7 @@ notify_me.sh --service slack --embed-json '[
 | `-m, --message` | Plain text message | `-m "Hello world"` |
 | `--service` | Target service | `--service discord\|slack\|both` |
 | `--embed-json` | Rich content JSON | `--embed-json '{...}'` |
-| `--embed-file` | JSON file path | `--embed-file status.json` |
+| `--embed-file` | JSON file path (Discord only) | `--embed-file status.json` |
 | `--username` | Display username | `--username "CI Bot"` |
 | `--avatar-url` | Avatar/icon URL | `--avatar-url "https://..."` |
 | `--tts` | Text-to-speech (Discord only) | `--tts` |
@@ -190,6 +190,7 @@ notify_me.sh --service slack --embed-json '[
 - **Blocks (Array)**: `[{"type":"section","text":{...}}]`
 - **Attachments (Object)**: `{"attachments":[{"color":"good","title":"..."}]}`
 - **Custom Fields**: Any valid Slack webhook payload keys
+- **⚠️ Note**: Use `--embed-json` for Slack (inline JSON). File-based `--embed-file` is Discord-only.
 
 ### Service Behavior
 - **Discord**: Validates message ≤2000 chars; supports TTS
@@ -278,4 +279,6 @@ The script provides clear error messages:
 
 ---
 
-**💡 Pro Tip:** For complex notifications, create reusable JSON template files and use `--embed-file` instead of inline JSON.
+**💡 Pro Tips:** 
+- **Discord**: For complex embeds, create JSON template files and use `--embed-file`
+- **Slack**: Use `--embed-json` with inline JSON for blocks and attachments (file-based JSON not recommended)

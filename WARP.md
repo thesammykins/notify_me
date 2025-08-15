@@ -5,7 +5,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 ## Overview
 
 - **Project**: notify_me.sh — a secure, feature-rich bash script to send webhook notifications to Discord and/or Slack
-- **Key capabilities**: multi-service support, native rich formatting (Discord embeds, Slack blocks/attachments), robust input validation, rate limiting with retries, secure webhook handling (not exposed in process lists), and simple system-wide install
+- **Key capabilities**: multi-service support, native rich formatting (Discord embeds, Slack blocks/attachments), robust input validation, rate limiting with retries, secure webhook handling (not exposed in process lists), file-based JSON (Discord), and simple system-wide install
 - **Platform**: macOS (bash), dependency: curl (preinstalled on macOS; install via Homebrew if missing)
 
 ## 1) Quickstart: Commonly used commands
@@ -70,11 +70,13 @@ notify_me.sh --service slack --embed-json '{
 }'
 ```
 
-### Load JSON from file
+### Load JSON from file (Discord only)
 ```bash
-# Provide a service-specific JSON file (examples in README)
+# File-based JSON works reliably with Discord only
 notify_me.sh --service discord --embed-file discord-success.json
-notify_me.sh --service slack   --embed-file slack-success.json
+
+# For Slack, use inline JSON instead:
+notify_me.sh --service slack --embed-json '[{"type":"section","text":{"type":"mrkdwn","text":"*Status*\nCompleted"}}]'
 ```
 
 ### Environment overrides (runtime)
