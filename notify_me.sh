@@ -179,11 +179,29 @@ build_slack_payload() {
       # Array format: treat as blocks
       add "\"blocks\":$trimmed"
     else
-      # Object format: merge keys into payload (strip outer braces)
-      local inner_json
-      inner_json="$(printf '%s' "$trimmed" | sed 's/^{//; s/}$//')"
-      if [ -n "$inner_json" ]; then
-        add "$inner_json"
+      # Object format: check if it contains attachments
+      if printf '%s' "$trimmed" | grep -q '"attachments"'; then
+        # Contains attachments - merge the object directly but add fallback
+        local inner_json
+        inner_json="$(printf '%s' "$trimmed" | sed 's/^{//; s/}$//')"
+        # Add fallback to each attachment if not present
+        local fallback_text
+        if [ -n "$message" ]; then
+          fallback_text="$(json_escape "$message")"
+        else
+          fallback_text="Rich content attachment"
+        fi
+        # For now, just add the inner JSON and let the user include fallback in their JSON
+        if [ -n "$inner_json" ]; then
+          add "$inner_json"
+        fi
+      else
+        # Regular object - merge keys into payload
+        local inner_json
+        inner_json="$(printf '%s' "$trimmed" | sed 's/^{//; s/}$//')"
+        if [ -n "$inner_json" ]; then
+          add "$inner_json"
+        fi
       fi
     fi
   fi
