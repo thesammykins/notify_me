@@ -1,13 +1,13 @@
 # AGENT.md - notify_me.sh Reference
 
-> Quick reference for LLMs and automated agents using notify_me.sh
+> Quick reference for LLMs and automated agents using notify_me.sh for Discord and/or Slack
 
 ## ⚠️ IMPORTANT: DO NOT MODIFY CODE
 
 **🛑 NEVER modify, edit, or suggest changes to the notify_me.sh script code unless the user explicitly requests code modifications.**
 
 This tool is production-ready and stable. Your role is to:
-- ✅ **Use the existing script** as-is for Discord notifications
+- ✅ **Use the existing script** as-is for Discord and/or Slack notifications
 - ✅ **Reference this guide** for proper usage patterns
 - ✅ **Help troubleshoot** configuration and usage issues
 - ❌ **DO NOT** suggest code improvements or modifications
@@ -19,40 +19,97 @@ If the user needs different functionality, suggest using the existing options or
 ## 🚀 Quick Usage
 
 ```bash
-# Simple notification
+# Simple notification (auto-detected service)
 notify_me.sh -m "Your message here"
 
-# Rich notification with embed
-notify_me.sh --embed-json '{"title":"Status","description":"Details","color":65280}'
+# Service-specific notification
+notify_me.sh --service slack -m "Deploy completed"
 
-# From file with custom bot name
-notify_me.sh --embed-file status.json --username "Bot Name"
+# Both services
+notify_me.sh --service both -m "System alert" --username "Monitor"
+
+# Discord embed
+notify_me.sh --service discord --embed-json '{"title":"Status","description":"Details","color":65280}'
+
+# Slack blocks
+notify_me.sh --service slack --embed-json '[{"type":"section","text":{"type":"mrkdwn","text":"*Status Update*"}}]'
+```
+
+## 🎛️ Service Selection
+
+### Auto-Detection (Default)
+- Only DISCORD_WEBHOOK_URL → discord
+- Only SLACK_WEBHOOK_URL → slack
+- Both URLs configured → discord (backward compatibility)
+
+### Manual Selection
+```bash
+# Target specific service
+notify_me.sh --service discord -m "Message"
+notify_me.sh --service slack -m "Message"
+notify_me.sh --service both -m "Message"
 ```
 
 ## 📋 Command Patterns
 
 ### Basic Text Messages
 ```bash
+# Auto-detected service
 notify_me.sh -m "Build completed successfully"
-notify_me.sh -m "Error: Database connection failed" --username "System Monitor"
-notify_me.sh -m "URGENT: Server down!" --tts
+
+# Discord with TTS
+notify_me.sh --service discord -m "URGENT: Server down!" --tts
+
+# Slack message
+notify_me.sh --service slack -m "Deploy finished" --username "CI Bot"
+
+# Both services
+notify_me.sh --service both -m "System alert" --username "Monitor"
 ```
 
 ### Status Updates (Success/Warning/Error)
+
+#### Discord Embeds
 ```bash
 # Success (Green)
-notify_me.sh --embed-json '{"title":"✅ Success","description":"Operation completed","color":65280}'
+notify_me.sh --service discord --embed-json '{"title":"✅ Success","description":"Operation completed","color":65280}'
 
 # Warning (Orange) 
-notify_me.sh --embed-json '{"title":"⚠️ Warning","description":"Check required","color":16753920}'
+notify_me.sh --service discord --embed-json '{"title":"⚠️ Warning","description":"Check required","color":16753920}'
 
 # Error (Red)
-notify_me.sh --embed-json '{"title":"❌ Error","description":"Operation failed","color":16711680}'
+notify_me.sh --service discord --embed-json '{"title":"❌ Error","description":"Operation failed","color":16711680}'
+```
+
+#### Slack Blocks
+```bash
+# Success
+notify_me.sh --service slack --embed-json '[{"type":"section","text":{"type":"mrkdwn","text":"✅ *Success*\nOperation completed"}}]'
+
+# Warning
+notify_me.sh --service slack --embed-json '[{"type":"section","text":{"type":"mrkdwn","text":"⚠️ *Warning*\nCheck required"}}]'
+
+# Error
+notify_me.sh --service slack --embed-json '[{"type":"section","text":{"type":"mrkdwn","text":"❌ *Error*\nOperation failed"}}]'
+```
+
+#### Slack Attachments
+```bash
+# Success
+notify_me.sh --service slack --embed-json '{"attachments":[{"color":"good","title":"✅ Success","text":"Operation completed"}]}'
+
+# Warning
+notify_me.sh --service slack --embed-json '{"attachments":[{"color":"warning","title":"⚠️ Warning","text":"Check required"}]}'
+
+# Error
+notify_me.sh --service slack --embed-json '{"attachments":[{"color":"danger","title":"❌ Error","text":"Operation failed"}]}'
 ```
 
 ### Build/Deploy Notifications
+
+#### Discord
 ```bash
-notify_me.sh --embed-json '{
+notify_me.sh --service discord --embed-json '{
   "title":"🚀 Deploy Complete", 
   "description":"Application deployed to production",
   "color":5814783,
@@ -62,6 +119,27 @@ notify_me.sh --embed-json '{
     {"name":"Duration","value":"2m 15s","inline":true}
   ]
 }' --username "Deploy Bot"
+```
+
+#### Slack
+```bash
+notify_me.sh --service slack --embed-json '[
+  {
+    "type":"section",
+    "text":{
+      "type":"mrkdwn",
+      "text":"🚀 *Deploy Complete*\nApplication deployed to production"
+    }
+  },
+  {
+    "type":"section",
+    "fields":[
+      {"type":"mrkdwn","text":"*Version:*\nv1.2.3"},
+      {"type":"mrkdwn","text":"*Environment:*\nProduction"},
+      {"type":"mrkdwn","text":"*Duration:*\n2m 15s"}
+    ]
+  }
+]' --username "Deploy Bot"
 ```
 
 ## 🎨 Common Colors
@@ -89,26 +167,44 @@ notify_me.sh --embed-json '{
 }
 ```
 
-## 🔧 Options Reference
+## 📝 Options Reference
 
 | Option | Usage | Example |
 |--------|-------|---------|
-| `-m, --message` | Plain text (required if no embed) | `-m "Hello world"` |
-| `--embed-json` | Inline JSON embed | `--embed-json '{...}'` |
+| `-m, --message` | Plain text message | `-m "Hello world"` |
+| `--service` | Target service | `--service discord\|slack\|both` |
+| `--embed-json` | Rich content JSON | `--embed-json '{...}'` |
 | `--embed-file` | JSON file path | `--embed-file status.json` |
-| `--username` | Bot display name | `--username "CI Bot"` |
-| `--avatar-url` | Bot avatar image | `--avatar-url "https://..."` |
-| `--tts` | Text-to-speech | `--tts` |
+| `--username` | Display username | `--username "CI Bot"` |
+| `--avatar-url` | Avatar/icon URL | `--avatar-url "https://..."` |
+| `--tts` | Text-to-speech (Discord only) | `--tts` |
+
+## 🎨 Rich Content Formats
+
+### Discord: Embeds
+- **Object**: Single embed `{"title":"...", "color":65280}`
+- **Array**: Multiple embeds `[{"title":"..."}, {...}]`
+- **Fields**: `"fields":[{"name":"...","value":"...","inline":true}]`
+
+### Slack: Blocks or Attachments
+- **Blocks (Array)**: `[{"type":"section","text":{...}}]`
+- **Attachments (Object)**: `{"attachments":[{"color":"good","title":"..."}]}`
+- **Custom Fields**: Any valid Slack webhook payload keys
+
+### Service Behavior
+- **Discord**: Validates message ≤2000 chars; supports TTS
+- **Slack**: No char limit; TTS ignored; username→username, avatar-url→icon_url
+- **Both**: Sends to each service; exits 0 if any succeeds, 1 if all fail
 
 ## ⚡ Automation Examples
 
 ### CI/CD Pipeline
 ```bash
-# Build started
-notify_me.sh -m "🔨 Build #${BUILD_NUMBER} started" --username "CI"
+# Build started (both services)
+notify_me.sh --service both -m "🔨 Build #${BUILD_NUMBER} started" --username "CI"
 
-# Build success
-notify_me.sh --embed-json "{
+# Build success (Discord)
+notify_me.sh --service discord --embed-json "{
   \"title\":\"✅ Build #${BUILD_NUMBER} Success\",
   \"description\":\"All tests passed\",
   \"color\":65280,
@@ -117,6 +213,17 @@ notify_me.sh --embed-json "{
     {\"name\":\"Commit\",\"value\":\"${GIT_COMMIT:0:8}\",\"inline\":true}
   ]
 }" --username "CI Bot"
+
+# Build success (Slack)
+notify_me.sh --service slack --embed-json "[
+  {
+    \"type\":\"section\",
+    \"text\":{
+      \"type\":\"mrkdwn\",
+      \"text\":\"✅ *Build #${BUILD_NUMBER} Success*\\nAll tests passed\"
+    }
+  }
+]" --username "CI Bot"
 ```
 
 ### System Monitoring
